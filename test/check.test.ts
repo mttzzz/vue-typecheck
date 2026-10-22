@@ -40,6 +40,11 @@ describe('check on the basic fixture', () => {
     // Without the stub, tsc would report the syntax error alone and type-check nothing.
     expect(keys(result.diagnostics, fixture)).toContain("src/format.ts(5,14) TS2322: Type 'number' is not assignable to type 'string'.")
   })
+
+  test('an unknown prop on a functional component is not reported, as in vue-tsc', async () => {
+    const result = await check({ project: join(fixture, 'tsconfig.json'), checker: 'tsc', cwd: fixture })
+    expect(keys(result.diagnostics, fixture).filter((key) => key.startsWith('src/components/UnknownProp.vue'))).toEqual([])
+  })
 })
 
 describe('cache', () => {
