@@ -5,7 +5,8 @@ Type-check Vue SFCs with **TypeScript 7**: `tsc` 7 or `bun check`.
 TypeScript 7 has no JS API, so `vue-tsc` cannot run on it, and Vue Language Tools' replacement (content
 mappers) needs TypeScript 7.1. `vue-typecheck` gets the same result today:
 
-1. every SFC is turned into the TypeScript that `vue-tsc` checks, by the official
+1. every SFC of the program, included by the tsconfig or imported, is turned into the TypeScript that
+   `vue-tsc` checks, by the official
    [`@vue/language-core`](https://github.com/vuejs/language-tools/tree/master/packages/language-core)
    codegen (TypeScript 6's JS API is loaded only to parse `<script>` blocks for it);
 2. the generated scripts are written to `node_modules/.cache/vue-typecheck`, next to a generated
@@ -60,7 +61,9 @@ The same is available as an API: `check({ project, checker })` and `compare({ pr
 - **No silent passes.** Neither `tsc` nor `bun check` type-checks a program in which any file has a
   syntax error (`tsc` says nothing about it, `bun check` prints "Stopped before type checking"). Every
   generated script is parsed first; one that does not parse is replaced by a stub, the rest of the
-  project is checked, and the SFC is reported as **not type-checked** (exit 1).
+  project is checked, and the SFC is reported as **not type-checked** (exit 1). A syntax error that maps
+  back to the .vue is in your code (`const a = 1 +`): it is reported there as an error, as `vue-tsc`
+  does, and only the others are reported as codegen bugs.
 - **Known codegen bug:** since `@vue/language-core` 3.3.12
   ([vuejs/language-tools#6230](https://github.com/vuejs/language-tools/pull/6230)) a prop value
   containing `//`, such as `href="https://vuejs.org"`, generates TypeScript that does not parse.

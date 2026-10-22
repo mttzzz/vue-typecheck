@@ -1,6 +1,6 @@
 import { type CheckerKind, type CheckerRun, type RawDiagnostic, runChecker } from './checkers'
 import { createGenerator, type Generate } from './codegen'
-import { type Diagnostic, mapDiagnostics } from './diagnostics'
+import { type Diagnostic, mapDiagnostics, mapSyntaxErrors } from './diagnostics'
 import { loadProject, type Project } from './project'
 import { findSyntaxProblems, type SyntaxProblem } from './syntax'
 import { prepareWorkspace, type Workspace } from './workspace'
@@ -24,8 +24,10 @@ export interface CheckResult {
   /** Diagnostics in generated glue code that map to nothing reportable (vue-tsc drops them too). */
   dropped: RawDiagnostic[]
   /**
-   * SFC → first syntax error of its generated script. These SFCs were NOT checked (their importers see
-   * a stub), and the run must fail: @vue/language-core produced code that does not parse.
+   * SFC → first syntax error of its generated script, when none of its syntax errors maps to the .vue.
+   * These SFCs were NOT checked (their importers see a stub), and the run must fail: @vue/language-core
+   * produced code that does not parse. Syntax errors that map are in `diagnostics`; their SFCs are not
+   * type-checked either.
    */
   unparseable: Map<string, SyntaxProblem>
   /** The checker did not type-check (see `CheckerRun.incomplete`): no diagnostics is not a pass. */
@@ -44,6 +46,8 @@ export interface CompareResult {
   /** Raw diagnostics (positions in the generated workspace, glue code included) only one of the checkers reported. */
   onlyTsc: RawDiagnostic[]
   onlyBun: RawDiagnostic[]
+  /** Syntax errors in the user's SFCs (see `CheckResult.unparseable`). */
+  syntaxErrors: Diagnostic[]
   unparseable: Map<string, SyntaxProblem>
 }
 
@@ -84,13 +88,14 @@ export async function check(options: CheckOptions): Promise<CheckResult> {
   const run = await runChecker(checker, workspace.configPath, project.root, cwd)
   mark = performance.now()
   const { diagnostics, dropped } = mapDiagnostics(run.diagnostics, workspace, generate)
+  const syntax = mapSyntaxErrors(await unparseableAfterCheck(dropped, workspace), workspace, generate)
   return {
     checker,
-    diagnostics,
+    diagnostics: [...syntax.diagnostics, ...diagnostics],
     dropped,
-    unparseable: await unparseableAfterCheck(dropped, workspace),
+    unparseable: syntax.unparseable,
     incomplete: run.incomplete,
-    sfcs: project.vueFiles.length,
+    sfcs: workspace.sources.size,
     regenerated: workspace.regenerated,
     timings: { prepare: prepareMs, check: run.ms, map: performance.now() - mark },
   }
@@ -110,6 +115,7 @@ export async function compare(options: Omit<CheckOptions, 'checker'>): Promise<C
   const bun = await runChecker('bun', workspace.configPath, project.root, cwd)
   const tscKeys = new Set(tsc.diagnostics.map(key))
   const bunKeys = new Set(bun.diagnostics.map(key))
+  const syntax = mapSyntaxErrors(await unparseableAfterCheck([...tsc.diagnostics, ...bun.diagnostics], workspace), workspace, generate)
   return {
     tsc,
     bun,
@@ -119,6 +125,7 @@ export async function compare(options: Omit<CheckOptions, 'checker'>): Promise<C
     },
     onlyTsc: tsc.diagnostics.filter((diagnostic) => !bunKeys.has(key(diagnostic))),
     onlyBun: bun.diagnostics.filter((diagnostic) => !tscKeys.has(key(diagnostic))),
-    unparseable: await unparseableAfterCheck([...tsc.diagnostics, ...bun.diagnostics], workspace),
+    syntaxErrors: syntax.diagnostics,
+    unparseable: syntax.unparseable,
   }
 }

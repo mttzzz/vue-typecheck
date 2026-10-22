@@ -1,6 +1,8 @@
-import { describe, expect, test } from 'bun:test'
+import { afterAll, describe, expect, test } from 'bun:test'
+import { mkdir, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 
-import { parseCheckerOutput, stoppedBeforeTypeChecking } from '../src/checkers'
+import { CheckerError, checkerProblem, parseCheckerOutput, runChecker, stoppedBeforeTypeChecking } from '../src/checkers'
 
 /* Real outputs, trimmed: the parser is the contract with two external tools' text formats. */
 const TSC = `src/a.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'.
@@ -46,5 +48,44 @@ describe('stoppedBeforeTypeChecking', () => {
   test('bun check saying it type-checked nothing is detected; a normal run is not', () => {
     expect(stoppedBeforeTypeChecking(BUN)).toBe('note: Stopped before type checking 5 files. Fix the errors above to see the rest.')
     expect(stoppedBeforeTypeChecking(TSC)).toBeUndefined()
+  })
+})
+
+describe('checkerProblem', () => {
+  const read = (output: string) => parseCheckerOutput(output, '/p')
+
+  test('complete runs: errors with exit 1, none with exit 0', () => {
+    expect(checkerProblem('tsc', TSC, 1, read(TSC))).toBeUndefined()
+    expect(checkerProblem('tsc', '', 0, [])).toBeUndefined()
+    expect(checkerProblem('bun', BUN, 1, read(BUN))).toBeUndefined()
+    expect(checkerProblem('bun', '✓ No type errors in 83 files [53.02ms]\n', 0, [])).toBeUndefined()
+  })
+
+  test('a checker that crashed after printing errors is not a complete run', () => {
+    const panic = `${TSC}panic: runtime error: invalid memory address or nil pointer dereference\n\ngoroutine 1 [running]:\n`
+    expect(checkerProblem('tsc', panic, 2, read(panic))).toBe('exited with 2 after 3 diagnostics')
+    expect(checkerProblem('tsc', panic, 1, read(panic))).toStartWith('printed a line that is not a diagnostic: panic:')
+    const cut = BUN.slice(0, BUN.indexOf('note:'))
+    expect(checkerProblem('bun', cut, 1, read(cut))).toBe('printed no summary')
+    const partial = BUN.replace('src/a.ts(3,7)', 'src/a.ts:3')
+    expect(checkerProblem('bun', partial, 1, read(partial))).toBe('reported 2 errors, 1 were read')
+    expect(checkerProblem('bun', '', 0, [])).toBe('printed no summary')
+    expect(checkerProblem('bun', '', 137, [])).toBe('exited with 137 after 0 diagnostics')
+  })
+})
+
+describe('runChecker', () => {
+  const root = join(import.meta.dir, '..', '.tmp', `crash-${crypto.randomUUID()}`)
+  afterAll(() => rm(root, { recursive: true, force: true }))
+
+  test('fails when tsc crashes after printing an error', async () => {
+    const typescript = join(root, 'node_modules', 'typescript')
+    await mkdir(join(typescript, 'bin'), { recursive: true })
+    await Bun.write(join(typescript, 'package.json'), JSON.stringify({ name: 'typescript', version: '7.0.2' }))
+    await Bun.write(
+      join(typescript, 'bin', 'tsc'),
+      `console.log("src/a.ts(1,7): error TS2322: Type 'number' is not assignable to type 'string'.")\nconsole.error('panic: out of memory')\nprocess.exit(2)\n`,
+    )
+    await expect(runChecker('tsc', join(root, 'tsconfig.json'), root, root)).rejects.toThrow(CheckerError)
   })
 })

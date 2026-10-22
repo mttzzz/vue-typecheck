@@ -32,6 +32,8 @@ export class CheckerError extends Error {}
 const DIAGNOSTIC = /^(.+?)\((\d+),(\d+)\): error TS(\d+): (.*)$/
 const GLOBAL_DIAGNOSTIC = /^error TS(\d+): (.*)$/
 const STOPPED = /^note: Stopped before type checking .*$/m
+const BUN_FOUND = /^Found (\d+) errors?\b/m
+const BUN_CLEAN = /^✓ No type errors\b/m
 
 /** bun check's note that it type-checked nothing (any syntax error stops it), if present. */
 export function stoppedBeforeTypeChecking(output: string): string | undefined {
@@ -64,6 +66,24 @@ export function parseCheckerOutput(output: string, cwd: string): RawDiagnostic[]
   return diagnostics
 }
 
+/**
+ * Why a run cannot be trusted, if it cannot: a checker that crashed after printing some errors must
+ * not pass for a run with only those errors. tsc 7 with `--noEmit` exits 1 when it reports errors and
+ * prints nothing but diagnostics (a Go panic exits 2 and prints a trace); bun check exits 1 and ends
+ * with `Found N errors`, or exits 0 with `✓ No type errors`.
+ */
+export function checkerProblem(kind: CheckerKind, output: string, exitCode: number, diagnostics: RawDiagnostic[]): string | undefined {
+  if (exitCode !== (diagnostics.length > 0 ? 1 : 0)) return `exited with ${exitCode} after ${diagnostics.length} diagnostics`
+  if (kind === 'tsc') {
+    const other = output.split('\n').find((line) => line.trim() && !DIAGNOSTIC.test(line) && !GLOBAL_DIAGNOSTIC.test(line) && !line.startsWith('  '))
+    return other === undefined ? undefined : `printed a line that is not a diagnostic: ${other}`
+  }
+  if (exitCode === 0) return BUN_CLEAN.test(output) ? undefined : 'printed no summary'
+  const found = BUN_FOUND.exec(output)?.[1]
+  if (found === undefined) return 'printed no summary'
+  return Number(found) === diagnostics.length ? undefined : `reported ${found} errors, ${diagnostics.length} were read`
+}
+
 /** tsc 7 from the checked project (its version is the project's choice), run with bun: no node needed. */
 async function tscCommand(projectRoot: string): Promise<string[]> {
   let packageJson: string
@@ -87,9 +107,8 @@ export async function runChecker(kind: CheckerKind, configPath: string, projectR
   const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited])
   const output = stdout + stderr
   const diagnostics = parseCheckerOutput(output, cwd)
-  if (exitCode !== 0 && diagnostics.length === 0) {
-    throw new CheckerError(`${command.join(' ')} exited with ${exitCode} without diagnostics:\n${output}`)
-  }
+  const problem = checkerProblem(kind, output, exitCode, diagnostics)
+  if (problem) throw new CheckerError(`${command.join(' ')} ${problem}:\n${output}`)
   return {
     kind,
     diagnostics,
