@@ -77,12 +77,13 @@ The same is available as an API: `check({ project, checker })` and `compare({ pr
 
 `compare` runs both checkers on the same generated files, so any difference is the checkers'. It prints
 the errors each one reports and lists the raw diagnostics (positions in the generated files) that only
-one of them found. Known differences on Bun 1.4.3:
+one of them found. Differences seen so far:
 
-- false TS2589 on heavy generic types such as nitropack's typed `$fetch` (`InternalApi`); which calls
-  fail depends on the checking order
-  ([oven-sh/bun#45691](https://github.com/oven-sh/bun/issues/45691)). Nuxt 4.6 route types
-  (`experimental.routeTypedFetch`) do not trigger it.
+- false TS2589 on heavy generic types such as nitropack's typed `$fetch` (`InternalApi`) in Bun 1.4.3 and
+  older; which calls failed depended on the checking order
+  ([oven-sh/bun#45691](https://github.com/oven-sh/bun/issues/45691)). Fixed in Bun 1.4.4: the repro from the
+  issue is clean there with up to 230 routes, where `tsc` 7.0.2 itself reports it from 210. Nuxt 4.6 route
+  types (`experimental.routeTypedFetch`) do not trigger it.
 
 ## License
 
