@@ -97,6 +97,13 @@ describe('syntax errors', () => {
     }
   })
 
+  // Only component props go through the flattened props copy that `//` breaks (SlashSlash.vue); the README says so.
+  test('a URL in the attribute of a plain element is neither an error nor a codegen bug', async () => {
+    const result = await check({ project: join(root, 'tsconfig.json'), checker: 'tsc', cwd: root })
+    expect(keys(result.diagnostics, root).filter((key) => key.startsWith('src/NativeUrl.vue'))).toEqual([])
+    expect([...result.unparseable.keys()].map((file) => relative(root, file))).not.toContain(join(root, 'src', 'NativeUrl.vue'))
+  })
+
   // vue-tsc reports the <script> one alone: it maps diagnostics by range, and `{{ count + }}` ends unmapped.
   test.skipIf(!node)('reports the <script> one where vue-tsc reports it', async () => {
     const expected = vueTsc(root)

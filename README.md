@@ -65,10 +65,12 @@ The same is available as an API: `check({ project, checker })` and `compare({ pr
   back to the .vue is in your code (`const a = 1 +`): it is reported there as an error, as `vue-tsc`
   does, and only the others are reported as codegen bugs.
 - **Known codegen bug:** since `@vue/language-core` 3.3.12
-  ([vuejs/language-tools#6230](https://github.com/vuejs/language-tools/pull/6230)) a prop value
-  containing `//`, such as `href="https://vuejs.org"`, generates TypeScript that does not parse.
-  `vue-tsc` hides it (the syntax error is in an unmapped region); here the SFC is reported. Until it is
-  fixed upstream, move such values into `<script>`.
+  ([vuejs/language-tools#6230](https://github.com/vuejs/language-tools/pull/6230)) a component prop
+  value containing `//`, such as `<Link to="https://vuejs.org" />`, generates TypeScript that does not
+  parse; it is tracked in [vuejs/language-tools#6240](https://github.com/vuejs/language-tools/issues/6240).
+  Plain elements (`<a href="https://vuejs.org">`) are not affected. `vue-tsc` hides it (the syntax error
+  is in an unmapped region); here the SFC is reported. Until it is fixed upstream, move such values
+  into `<script>`.
 - Positions: checkers print where an error starts, not its length (a span in `bun check` output is
   requested in [oven-sh/bun#45708](https://github.com/oven-sh/bun/issues/45708)). At a token start, a
   zero-length boundary mapping and the token's own mapping both match; the token wins, which matched
