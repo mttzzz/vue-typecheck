@@ -9,11 +9,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.3
-      - uses: actions/setup-node@v4
+          bun-version: 1.4.5
+      # The parity tests run vue-tsc, which needs Node (its tsc.js patch never fires under Bun).
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
