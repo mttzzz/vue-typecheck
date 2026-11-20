@@ -1,6 +1,6 @@
 {
   "name": "@mttzzz/vue-typecheck",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Type-check Vue SFCs with TypeScript 7 (tsc or bun check)",
   "license": "MIT",
   "type": "module",
