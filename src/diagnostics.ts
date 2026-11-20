@@ -67,18 +67,21 @@ function isEmpty(mapping: Mapping<CodeInformation>): boolean {
   return mapping.lengths.every((length) => length === 0)
 }
 
-/** Where a diagnostic at this offset of the script starts in the .vue, if it is reported at all. */
-function toSourceOffset(script: GeneratedScript, offset: number, code: number): number | undefined {
-  const candidates = [...script.map.toSourceLocation(offset, (data) => shouldReport(data, code))]
-  return (candidates.find(([, mapping]) => !isEmpty(mapping)) ?? candidates[0])?.[0]
-}
-
 /**
+ * Where a diagnostic at this offset of the script starts in the .vue, if it is reported at all.
  * Checkers print where a diagnostic starts, not how long it is, so Volar's range lookup (what vue-tsc
  * uses) is not available. At the start of a token a zero-length boundary marker (the `:` of `:size`)
  * and the token's own mapping (`size`) both match; vue-tsc reports the token, so a non-empty mapping
- * wins over an empty one.
+ * wins over an empty one. It wins before `shouldReport` runs: the token can silence a code (TS2353
+ * on an unknown prop) that the marker would still report.
  */
+function toSourceOffset(script: GeneratedScript, offset: number, code: number): number | undefined {
+  const located = [...script.map.toSourceLocation(offset)]
+  const tokens = located.filter(([, mapping]) => !isEmpty(mapping))
+  return (tokens.length > 0 ? tokens : located).find(([, mapping]) => shouldReport(mapping.data, code))?.[0]
+}
+
+/** Diagnostics of generated scripts at their .vue positions; the ones that map to nothing reportable are `dropped`. */
 export function mapDiagnostics(raw: RawDiagnostic[], workspace: Workspace, generate: Generate): MappedDiagnostics {
   const generated = new Map<string, (GeneratedScript & { starts: number[] }) | undefined>()
   const sourceStarts = new Map<string, number[]>()
