@@ -65,6 +65,7 @@ async function main(argv: string[]): Promise<number> {
   if (positionals[0] === 'compare') {
     const result = await compare({ project: values.project, cwd })
     for (const [source, problem] of result.unparseable) console.log(formatUnparseable(source, problem, cwd))
+    for (const diagnostic of result.syntaxErrors) console.log(format(diagnostic, cwd))
     for (const [name, kind] of [['tsc', 'tsc'], ['bun check', 'bun']] as const) {
       const run = result[kind]
       const glue = run.diagnostics.length - result.reported[kind]
